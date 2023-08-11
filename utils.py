@@ -291,7 +291,7 @@ def get_evaluation_bboxes(
     train_idx = 0
     all_pred_boxes = []
     all_true_boxes = []
-    for batch_idx, (x, labels) in enumerate(tqdm(loader)):
+    for batch_idx, (x, labels) in enumerate(loader):
         x = x.to(device)
 
         with torch.no_grad():
@@ -333,62 +333,7 @@ def get_evaluation_bboxes(
     model.train()
     return all_pred_boxes, all_true_boxes
 
-def get_evaluation_bboxes1(
-    batch,
-    model,
-    iou_threshold,
-    anchors,
-    threshold,
-    box_format="midpoint",
-    device="cuda",
-):
-    # make sure model is in eval before get bboxes
-    
-    train_idx = 0
-    all_pred_boxes = []
-    all_true_boxes = []
-    x, labels = batch
-    x = x.to(device)
 
-    with torch.no_grad():
-        predictions = model(x)
-
-    batch_size = x.shape[0]
-    bboxes = [[] for _ in range(batch_size)]
-    for i in range(3):
-        S = predictions[i].shape[2]
-        anchor = torch.tensor([*anchors[i]]).to(device) * S
-        boxes_scale_i = cells_to_bboxes(
-            predictions[i], anchor, S=S, is_preds=True
-        )
-        for idx, (box) in enumerate(boxes_scale_i):
-            bboxes[idx] += box
-
-    # we just want one bbox for each label, not one for each scale
-    true_bboxes = cells_to_bboxes(
-        labels[2], anchor, S=S, is_preds=False
-    )
-
-    for idx in range(batch_size):
-        nms_boxes = non_max_suppression(
-            bboxes[idx],
-            iou_threshold=iou_threshold,
-            threshold=threshold,
-            box_format=box_format,
-        )
-
-        for nms_box in nms_boxes:
-            all_pred_boxes.append([train_idx] + nms_box)
-
-        for box in true_bboxes[idx]:
-            if box[1] > threshold:
-                all_true_boxes.append([train_idx] + box)
-
-        train_idx += 1
-
-    
-    return all_pred_boxes, all_true_boxes
-    
 def cells_to_bboxes(predictions, anchors, S, is_preds=True):
     """
     Scales the predictions coming from the model to
@@ -434,7 +379,7 @@ def check_class_accuracy(model, loader, threshold):
     tot_noobj, correct_noobj = 0, 0
     tot_obj, correct_obj = 0, 0
 
-    for idx, (x, y) in enumerate(tqdm(loader)):
+    for idx, (x, y) in enumerate(loader):
         x = x.to(config.DEVICE)
         with torch.no_grad():
             out = model(x)
@@ -460,12 +405,14 @@ def check_class_accuracy(model, loader, threshold):
     print(f"Obj accuracy is: {(correct_obj/(tot_obj+1e-16))*100:2f}%")
     model.train()
 
+    return (correct_class/(tot_class_preds+1e-16))*100, (correct_noobj/(tot_noobj+1e-16))*100, (correct_obj/(tot_obj+1e-16))*100
+
 
 def get_mean_std(loader):
     # var[X] = E[X**2] - E[X]**2
     channels_sum, channels_sqrd_sum, num_batches = 0, 0, 0
 
-    for data, _ in tqdm(loader):
+    for data, _ in loader:
         channels_sum += torch.mean(data, dim=[0, 2, 3])
         channels_sqrd_sum += torch.mean(data ** 2, dim=[0, 2, 3])
         num_batches += 1
